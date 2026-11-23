@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bande — Extracteur &amp; découpe YouTube</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <svg class="brand-mark" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <rect x="1" y="3" width="4" height="12" fill="currentColor"/>
+          <rect x="7" y="3" width="3" height="12" fill="var(--accent)"/>
+          <rect x="12" y="3" width="5" height="12" fill="currentColor" opacity="0.32"/>
+        </svg>
+        <span class="brand-name">BANDE</span>
+        <span class="brand-sep" aria-hidden="true">/</span>
+        <span class="brand-desc">Conversion &amp; découpe YouTube</span>
+      </div>
+
+      <div class="topbar-right">
+        <div class="engine-status" id="engineStatus">
+          <span class="status-led" id="statusLed"></span>
+          <span class="status-text" id="statusText">Prêt</span>
+        </div>
+        <button type="button" class="btn-ghost btn-theme" id="themeToggle" title="Changer de thème">
+          <span class="theme-label" id="themeLabel">Sombre</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-shell">
+    <!-- URL Command Bar -->
+    <section class="url-section" aria-label="Adresse de la vidéo ou playlist YouTube">
+      <form id="probeForm" class="url-bar" autocomplete="off">
+        <div class="url-input-wrap">
+          <svg class="url-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M6.5 9.5L9.5 6.5M5.2 6.8L3.7 8.3a2.5 2.5 0 003.5 3.5l1.5-1.5M10.8 9.2l1.5-1.5a2.5 2.5 0 00-3.5-3.5L7.3 5.7" stroke="currentColor" stroke-width="1.35" stroke-linecap="square"/>
+          </svg>
+          <input
+            id="urlInput"
+            type="url"
+            inputmode="url"
+            placeholder="Collez un lien YouTube (vidéo, Short ou playlist)"
+            aria-label="Lien YouTube"
+            spellcheck="false"
+            required
+          >
+          <button type="button" id="clearUrlBtn" class="icon-clear hidden" title="Effacer" aria-label="Effacer le lien">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" stroke-width="1.4"/>
+            </svg>
+          </button>
+          <button type="button" id="pasteBtn" class="btn-inline-paste">Coller</button>
+        </div>
+        <button type="submit" id="probeBtn" class="btn-ink">
+          <span class="btn-text">Analyser</span>
+        </button>
+      </form>
+      <div id="probeError" class="inline-alert hidden" role="alert"></div>
+    </section>
+
+    <!-- Empty State -->
+    <section id="emptyState" class="empty-state">
+      <div class="empty-head">
+        <h1>Collez un lien vidéo ou une playlist.</h1>
+        <p>Choisissez votre format, la définition réelle, découpez sur la forme d'onde audio et personnalisez fondus, volume ou pochette si besoin.</p>
+      </div>
+
+      <dl class="spec-ledger">
+        <div class="spec-row">
+          <dt>Audio</dt>
+          <dd>
+            <span class="spec-primary">MP3 · OGG · WAV</span>
+            <span class="spec-secondary">et FLAC, M4A, OPUS, AIFF, ALAC, AAC, WMA, AC3 — fondus, LUFS/gain et pochette intégrée</span>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Vidéo</dt>
+          <dd>
+            <span class="spec-primary">MP4 · WEBM · MKV</span>
+            <span class="spec-secondary">et MOV, AVI, M4V, TS, FLV, GIF — toutes les qualités réelles (144p à 4K UHD) + option muet</span>
+          </dd>
+        </div>
+        <div class="spec-row">
+          <dt>Découpe</dt>
+          <dd>
+            <span class="spec-primary">Forme d'onde réelle</span>
+            <span class="spec-secondary">écoute de l'extrait en direct, marqueurs I / O, chapitres YouTube, extraits enchaînés et playlists</span>
+          </dd>
+        </div>
+      </dl>
+
+      <div id="recentSection" class="recent-section hidden">
+        <div class="section-micro-head">
+          <span>Analysés récemment</span>
+          <button type="button" id="clearRecentBtn" class="link-muted">Effacer</button>
+        </div>
+        <ul id="recentList" class="recent-list"></ul>
+      </div>
+    </section>
+
+    <!-- Loading Skeleton State -->
+    <section id="loadingState" class="loading-state hidden" aria-live="polite">
+      <div class="loading-row">
+        <span class="loading-bar-indet"></span>
+        <span id="loadingMessage">Lecture des flux et des qualités disponibles sur YouTube…</span>
+      </div>
+    </section>
+
+    <!-- Active Studio Workspace (Shared for Video Mode & Playlist Mode) -->
+    <section id="workspace" class="workspace hidden">
+      <!-- Context banner (playlist hint on watch?v=...&list=... OR back to playlist) -->
+      <div id="contextBanner" class="context-banner hidden">
+        <span id="contextBannerText"></span>
+        <button type="button" id="contextBannerBtn" class="btn-subtle"></button>
+      </div>
+
+      <!-- Media Identity Strip -->
+      <div class="media-strip">
+        <div class="media-strip-info">
+          <h2 id="videoTitle" class="media-title"></h2>
+          <div class="media-meta">
+            <span id="videoChannel"></span>
+            <span class="meta-dot" aria-hidden="true">·</span>
+            <span id="videoDuration" class="mono"></span>
+            <span id="videoViewsWrap" class="hidden">
+              <span class="meta-dot" aria-hidden="true">·</span>
+              <span id="videoViews"></span>
+            </span>
+          </div>
+        </div>
+        <a id="openOriginalLink" class="link-muted" href="#" target="_blank" rel="noopener noreferrer">Ouvrir sur YouTube ↗</a>
+      </div>
+
+      <!-- Two-Column Studio Deck -->
+      <div class="deck-grid">
+        <!-- LEFT STAGE A: Single Video Monitor + Precision Trim Bench -->
+        <div id="videoStage" class="deck-stage">
+          <div class="monitor-frame" id="monitorFrame">
+            <img id="videoThumb" class="monitor-thumb" src="" alt="Aperçu de la vidéo">
+            <div id="ytPlayerMount" class="monitor-player hidden"></div>
+            <button type="button" id="monitorPlayOverlay" class="monitor-overlay" aria-label="Charger le lecteur pour prévisualiser la découpe">
+              <span class="monitor-play-box">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M4.5 2.8L13 8L4.5 13.2V2.8Z" fill="currentColor"/>
+                </svg>
+                <span>Charger l'aperçu vidéo</span>
+              </span>
+            </button>
+            <div id="embedFallbackNotice" class="embed-notice hidden">
+              Aperçu intégré désactivé par l'auteur — la découpe par timecode reste entièrement active.
+            </div>
+          </div>
+
+          <!-- Precision Trim Bench -->
+          <div class="trim-bench">
+            <div class="bench-header">
+              <div class="bench-title-group">
+                <span class="panel-label">Découpe</span>
+                <span id="trimStateTag" class="trim-tag">Intégrale</span>
+                <span id="waveStatusTag" class="wave-status mono hidden">Forme d'onde…</span>
+              </div>
+              <div class="bench-actions">
+                <label class="loop-toggle" title="Relire automatiquement la sélection en boucle">
+                  <input type="checkbox" id="loopSegmentCheck">
+                  <span>Boucler</span>
+                </label>
+                <button type="button" id="resetTrimBtn" class="btn-subtle" disabled>Tout sélectionner</button>
+              </div>
+            </div>
+
+            <!-- Interactive Ruler / Real Audio Waveform -->
+            <div class="ruler-shell">
+              <div id="trimRuler" class="trim-ruler" role="region" aria-label="Zone de découpe temporelle">
+                <canvas id="waveCanvas" class="wave-canvas"></canvas>
+                <div id="chapterTicks" class="chapter-ticks"></div>
+                <div id="maskLeft" class="trim-mask trim-mask-left"></div>
+                <div id="maskRight" class="trim-mask trim-mask-right"></div>
+                <div id="trimSelection" class="trim-selection" title="Glisser pour déplacer la fenêtre de découpe"></div>
+                <div id="playhead" class="playhead"></div>
+
+                <div
+                  id="handleStart"
+                  class="trim-handle trim-handle-start"
+                  role="slider"
+                  tabindex="0"
+                  aria-label="Début de l'extrait"
+                >
+                  <span class="handle-grip"></span>
+                  <span id="tipStart" class="handle-tip mono">00:00</span>
+                </div>
+
+                <div
+                  id="handleEnd"
+                  class="trim-handle trim-handle-end"
+                  role="slider"
+                  tabindex="0"
+                  aria-label="Fin de l'extrait"
+                >
+                  <span class="handle-grip"></span>
+                  <span id="tipEnd" class="handle-tip mono">00:00</span>
+                </div>
+              </div>
+
+              <div class="ruler-scale mono" id="rulerScale"></div>
+            </div>
+
+            <!-- Transport & Exact Timecode Inputs -->
+            <div class="trim-controls">
+              <div class="transport-group">
+                <button type="button" id="playSegmentBtn" class="btn-control" title="Lire ou mettre en pause l'extrait sélectionné (Espace)">
+                  <svg id="playSegmentIcon" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2.5 1.8L10 6L2.5 10.2V1.8Z" fill="currentColor"/>
+                  </svg>
+                  <span id="playSegmentLabel">Lire l'extrait</span>
+                </button>
+                <button type="button" id="markInBtn" class="btn-control btn-mark" title="Définir le début sur la tête de lecture (I)">
+                  <span class="key-hint mono">I</span> Début ici
+                </button>
+                <button type="button" id="markOutBtn" class="btn-control btn-mark" title="Définir la fin sur la tête de lecture (O)">
+                  <span class="key-hint mono">O</span> Fin ici
+                </button>
+              </div>
+
+              <div class="timecode-group">
+                <div class="tc-field">
+                  <label for="inputStart">Début</label>
+                  <div class="tc-stepper">
+                    <button type="button" class="tc-step" data-target="start" data-delta="-1" title="-1 seconde">−</button>
+                    <input id="inputStart" class="mono" type="text" value="00:00" aria-label="Temps de début">
+                    <button type="button" class="tc-step" data-target="start" data-delta="1" title="+1 seconde">+</button>
+                  </div>
+                </div>
+                <span class="tc-arrow" aria-hidden="true">→</span>
+                <div class="tc-field">
+                  <label for="inputEnd">Fin</label>
+                  <div class="tc-stepper">
+                    <button type="button" class="tc-step" data-target="end" data-delta="-1" title="-1 seconde">−</button>
+                    <input id="inputEnd" class="mono" type="text" value="00:00" aria-label="Temps de fin">
+                    <button type="button" class="tc-step" data-target="end" data-delta="1" title="+1 seconde">+</button>
+                  </div>
+                </div>
+                <div class="tc-duration">
+                  <span>Durée</span>
+                  <strong id="selectedDuration" class="mono">00:00</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Optional YouTube Chapters -->
+            <div id="chaptersBox" class="chapters-box hidden">
+              <div class="chapters-label">Chapitres de la vidéo <span class="chapters-hint">— cliquez pour caler la découpe</span></div>
+              <div id="chaptersList" class="chapters-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LEFT STAGE B: Playlist Track Selector -->
+        <div id="playlistStage" class="deck-stage hidden">
+          <div class="playlist-bench">
+            <div class="playlist-toolbar">
+              <div class="playlist-toolbar-left">
+                <span class="panel-label">Titres de la playlist</span>
+                <span id="playlistSelCount" class="trim-tag active mono">0 / 0</span>
+              </div>
+              <div class="playlist-toolbar-actions">
+                <button type="button" id="plSelectAllBtn" class="btn-subtle">Tout cocher</button>
+                <button type="button" id="plSelectNoneBtn" class="btn-subtle">Tout décocher</button>
+              </div>
+            </div>
+            <div class="playlist-filter-row">
+              <input id="plFilterInput" type="search" placeholder="Filtrer par titre ou chaîne…" aria-label="Filtrer les titres de la playlist">
+            </div>
+            <ul id="playlistTrackList" class="playlist-tracks"></ul>
+          </div>
+        </div>
+
+        <!-- RIGHT CONSOLE: Format, Quality, DSP Options, Tags/Cover & Export -->
+        <aside class="deck-console" aria-label="Paramètres d'exportation">
+          <!-- Mode Switch -->
+          <div class="console-block">
+            <div class="panel-label">Sortie</div>
+            <div class="mode-switch" role="tablist" aria-label="Type de fichier">
+              <button type="button" class="mode-btn active" data-mode="audio" role="tab" aria-selected="true">Audio</button>
+              <button type="button" class="mode-btn" data-mode="video" role="tab" aria-selected="false">Vidéo</button>
+            </div>
+          </div>
+
+          <!-- Format Selector -->
+          <div class="console-block">
+            <div class="block-head">
+              <span class="panel-label">Format</span>
+              <span id="formatActiveNote" class="meta-mono mono"></span>
+            </div>
+
+            <div id="primaryFormats" class="format-primary-grid"></div>
+
+            <div class="more-formats-wrap">
+              <button type="button" id="toggleMoreFormats" class="more-formats-toggle" aria-expanded="false">
+                <span id="moreFormatsLabel">Autres formats audio</span>
+                <span class="more-formats-right">
+                  <span id="moreFormatsSelectedBadge" class="more-badge hidden mono"></span>
+                  <svg class="chevron" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M5 3.5L8.5 7L5 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                  </svg>
+                </span>
+              </button>
+              <div id="extendedFormats" class="format-extended-grid hidden"></div>
+            </div>
+          </div>
+
+          <!-- Quality Selector -->
+          <div class="console-block">
+            <div class="block-head">
+              <span class="panel-label" id="qualityHeading">Débit audio (kbps)</span>
+              <span id="qualityEstimate" class="meta-mono mono"></span>
+            </div>
+            <div id="qualityOptions" class="quality-container"></div>
+          </div>
+
+          <!-- C & E: Optional Audio Processing (Fades, Custom LUFS/Gain, Video Mute) -->
+          <div class="console-block console-accordion-block">
+            <button type="button" id="toggleDspPanel" class="accordion-head" aria-expanded="false">
+              <span class="panel-label">Traitement son &amp; fondus</span>
+              <span class="more-formats-right">
+                <span id="dspActiveBadge" class="more-badge hidden mono"></span>
+                <svg class="chevron" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M5 3.5L8.5 7L5 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                </svg>
+              </span>
+            </button>
+
+            <div id="dspPanelBody" class="accordion-body hidden">
+              <!-- Video Mute Toggle (shown only in Video mode) -->
+              <label id="muteVideoRow" class="check-row hidden">
+                <input type="checkbox" id="muteVideoCheck">
+                <span>Supprimer la piste audio (vidéo muette)</span>
+              </label>
+
+              <div id="audioDspControls" class="dsp-stack">
+                <!-- Fade In / Fade Out -->
+                <div class="dsp-group">
+                  <div class="dsp-subhead">
+                    <span>Fondus entrée / sortie</span>
+                    <span class="meta-mono mono">0 = désactivé</span>
+                  </div>
+                  <div class="fade-grid">
+                    <div class="fade-box">
+                      <label for="fadeInInput">Entrée (s)</label>
+                      <input id="fadeInInput" class="mono" type="number" min="0" max="15" step="0.5" value="0">
+                      <div class="mini-presets" data-fade-target="in">
+                        <button type="button" class="mini-chip active" data-val="0">0</button>
+                        <button type="button" class="mini-chip" data-val="0.5">0,5</button>
+                        <button type="button" class="mini-chip" data-val="1">1</button>
+                        <button type="button" class="mini-chip" data-val="2">2</button>
+                        <button type="button" class="mini-chip" data-val="3">3</button>
+                      </div>
+                    </div>
+                    <div class="fade-box">
+                      <label for="fadeOutInput">Sortie (s)</label>
+                      <input id="fadeOutInput" class="mono" type="number" min="0" max="15" step="0.5" value="0">
+                      <div class="mini-presets" data-fade-target="out">
+                        <button type="button" class="mini-chip active" data-val="0">0</button>
+                        <button type="button" class="mini-chip" data-val="0.5">0,5</button>
+                        <button type="button" class="mini-chip" data-val="1">1</button>
+                        <button type="button" class="mini-chip" data-val="2">2</button>
+                        <button type="button" class="mini-chip" data-val="3">3</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Custom Volume / Normalization -->
+                <div class="dsp-group">
+                  <div class="dsp-subhead">
+                    <span>Niveau sonore</span>
+                    <span id="normValueReadout" class="meta-mono mono">Original</span>
+                  </div>
+                  <div class="seg-3" role="radiogroup" aria-label="Mode de niveau sonore">
+                    <button type="button" class="seg-btn active" data-norm="off">Original</button>
+                    <button type="button" class="seg-btn" data-norm="lufs">LUFS</button>
+                    <button type="button" class="seg-btn" data-norm="gain">Gain dB</button>
+                  </div>
+
+                  <!-- Custom LUFS Controls -->
+                  <div id="lufsControlBox" class="slider-box hidden">
+                    <input id="lufsSlider" type="range" min="-24" max="-6" step="0.5" value="-14">
+                    <div class="mini-presets" id="lufsPresets">
+                      <button type="button" class="mini-chip" data-lufs="-16">-16 Pod</button>
+                      <button type="button" class="mini-chip active" data-lufs="-14">-14 Stream</button>
+                      <button type="button" class="mini-chip" data-lufs="-12">-12 Fort</button>
+                      <button type="button" class="mini-chip" data-lufs="-9">-9 Club</button>
+                    </div>
+                  </div>
+
+                  <!-- Custom Manual Gain Controls -->
+                  <div id="gainControlBox" class="slider-box hidden">
+                    <input id="gainSlider" type="range" min="-12" max="12" step="0.5" value="0">
+                    <div class="mini-presets" id="gainPresets">
+                      <button type="button" class="mini-chip" data-gain="-6">-6 dB</button>
+                      <button type="button" class="mini-chip" data-gain="-3">-3 dB</button>
+                      <button type="button" class="mini-chip active" data-gain="0">0 dB</button>
+                      <button type="button" class="mini-chip" data-gain="3">+3 dB</button>
+                      <button type="button" class="mini-chip" data-gain="6">+6 dB</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- D: Optional Tags & Custom Deezer-style Cover Designer -->
+          <div id="metaCoverBlock" class="console-block console-accordion-block">
+            <button type="button" id="toggleMetaPanel" class="accordion-head" aria-expanded="false">
+              <span class="panel-label">Tags &amp; pochette (optionnel)</span>
+              <span class="more-formats-right">
+                <span id="metaActiveBadge" class="more-badge hidden mono"></span>
+                <svg class="chevron" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M5 3.5L8.5 7L5 10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
+                </svg>
+              </span>
+            </button>
+
+            <div id="metaPanelBody" class="accordion-body hidden">
+              <!-- Single-video editable metadata -->
+              <div id="singleMetaFields" class="meta-fields">
+                <div class="field-row">
+                  <label for="metaFilename">Nom du fichier</label>
+                  <input id="metaFilename" type="text" placeholder="Automatique (titre + bornes)">
+                </div>
+                <div class="field-row-2">
+                  <div class="field-row">
+                    <label for="metaTitle">Titre</label>
+                    <input id="metaTitle" type="text" placeholder="Titre du morceau">
+                  </div>
+                  <div class="field-row">
+                    <label for="metaArtist">Artiste</label>
+                    <input id="metaArtist" type="text" placeholder="Chaîne / Artiste">
+                  </div>
+                </div>
+                <div class="field-row">
+                  <label for="metaAlbum">Album / Étiquette</label>
+                  <input id="metaAlbum" type="text" placeholder="Optionnel (ex. Live, Session…)">
+                </div>
+              </div>
+
+              <!-- Playlist simple cover option -->
+              <label id="playlistCoverRow" class="check-row hidden">
+                <input type="checkbox" id="playlistThumbCoverCheck">
+                <span>Intégrer la miniature YouTube comme pochette sur chaque titre (MP3 / M4A / FLAC)</span>
+              </label>
+
+              <!-- Single-video Cover Art Studio -->
+              <div id="coverStudioBox" class="cover-studio">
+                <div class="dsp-subhead">
+                  <span>Pochette intégrée</span>
+                  <span id="coverCompatHint" class="meta-mono mono">MP3 · M4A · FLAC · ALAC</span>
+                </div>
+
+                <div class="seg-4" role="radiogroup" aria-label="Source de pochette">
+                  <button type="button" class="seg-btn active" data-cover="none">Aucune</button>
+                  <button type="button" class="seg-btn" data-cover="thumb">Miniature</button>
+                  <button type="button" class="seg-btn" data-cover="custom">Custom</button>
+                  <button type="button" class="seg-btn" data-cover="upload">Image</button>
+                </div>
+
+                <input id="coverFileInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+
+                <!-- Preview + Custom Designer Controls -->
+                <div id="coverEditorBox" class="cover-editor hidden">
+                  <div class="cover-preview-col">
+                    <canvas id="coverPreviewCanvas" width="600" height="600" class="cover-canvas"></canvas>
+                  </div>
+
+                  <div class="cover-controls-col">
+                    <div id="customCoverControls" class="custom-cover-controls hidden">
+                      <div class="cover-style-grid" role="radiogroup" aria-label="Style de pochette">
+                        <button type="button" class="style-chip active" data-cstyle="deezer">Deezer</button>
+                        <button type="button" class="style-chip" data-cstyle="vinyl">Studio</button>
+                        <button type="button" class="style-chip" data-cstyle="duotone">Duotone</button>
+                        <button type="button" class="style-chip" data-cstyle="typo">Typo</button>
+                      </div>
+
+                      <div class="swatch-row" aria-label="Palette de couleur">
+                        <button type="button" class="swatch active" data-color="#D9481E" style="background:#D9481E" title="Corail"></button>
+                        <button type="button" class="swatch" data-color="#161614" style="background:#161614" title="Encre"></button>
+                        <button type="button" class="swatch" data-color="#1D4ED8" style="background:#1D4ED8" title="Cobalt"></button>
+                        <button type="button" class="swatch" data-color="#1F6B4E" style="background:#1F6B4E" title="Forêt"></button>
+                        <button type="button" class="swatch" data-color="#C98A16" style="background:#C98A16" title="Ocre"></button>
+                        <button type="button" class="swatch" data-color="#8E2438" style="background:#8E2438" title="Bordeaux"></button>
+                      </div>
+
+                      <input id="coverTagline" type="text" class="cover-tagline-input" placeholder="Sous-titre (ex. MIX, EXTRAIT…)" maxlength="24">
+                    </div>
+
+                    <div id="uploadCoverControls" class="hidden">
+                      <button type="button" id="pickCoverFileBtn" class="btn-subtle">Choisir une image…</button>
+                    </div>
+
+                    <div id="thumbCoverHint" class="cover-hint hidden">
+                      Miniature YouTube recadrée proprement en format carré 1000 × 1000 px.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary & Primary Action -->
+          <div class="console-block console-export">
+            <div id="exportSummary" class="export-summary mono"></div>
+
+            <!-- Playlist ZIP option -->
+            <label id="playlistZipRow" class="check-row hidden">
+              <input type="checkbox" id="playlistZipCheck" checked>
+              <span>Regrouper dans une seule archive .ZIP</span>
+            </label>
+
+            <div class="export-actions">
+              <button type="button" id="downloadBtn" class="btn-accent">
+                <span id="downloadBtnText">Télécharger</span>
+              </button>
+              <button type="button" id="queueClipBtn" class="btn-secondary" title="Ajouter cette découpe à la file d'exportation pour enchaîner plusieurs extraits">
+                + File
+              </button>
+            </div>
+
+            <!-- Live Job Progress -->
+            <div id="jobProgressBox" class="job-progress hidden" aria-live="polite">
+              <div class="job-progress-head">
+                <span id="jobStage">Préparation…</span>
+                <span id="jobPct" class="mono">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="jobBar" class="progress-fill"></div>
+              </div>
+              <div class="job-progress-foot">
+                <span id="jobDetail" class="mono"></span>
+                <button type="button" id="cancelJobBtn" class="link-danger">Annuler</button>
+              </div>
+            </div>
+
+            <div id="jobError" class="inline-alert hidden" role="alert"></div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Multi-Clip Queue & Session History -->
+      <section id="clipsSection" class="clips-section hidden">
+        <div id="queuePanel" class="clips-panel hidden">
+          <div class="clips-panel-head">
+            <div class="clips-panel-title">
+              <span class="panel-label">File d'extraits</span>
+              <span id="queueCount" class="count-tag mono">0</span>
+            </div>
+            <div class="clips-panel-actions">
+              <button type="button" id="clearQueueBtn" class="link-muted">Vider</button>
+              <button type="button" id="runQueueBtn" class="btn-ink btn-sm">Tout exporter</button>
+            </div>
+          </div>
+          <ul id="queueList" class="clips-list"></ul>
+        </div>
+
+        <div id="exportsPanel" class="clips-panel hidden">
+          <div class="clips-panel-head">
+            <div class="clips-panel-title">
+              <span class="panel-label">Exportations de la session</span>
+              <span id="exportsCount" class="count-tag mono">0</span>
+            </div>
+            <span class="clips-hint">Vous pouvez modifier la découpe ci-dessus et lancer un nouvel extrait à tout moment.</span>
+          </div>
+          <ul id="exportsList" class="clips-list"></ul>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>Bande — Traitement local via yt-dlp &amp; FFmpeg</span>
+      <span class="mono">Raccourcis : Espace (lecture) · I (début) · O (fin)</span>
+    </div>
+  </footer>
+
+  <script src="https://www.youtube.com/iframe_api" async></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
