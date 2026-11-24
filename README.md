@@ -1,11 +1,3 @@
----
-title: Bande
-emoji: ✂️
-colorFrom: gray
-colorTo: red
-sdk: docker
-app_port: 7860
----
 
 # Bande — Version Web Optimisée
 
